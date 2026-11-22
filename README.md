@@ -26,6 +26,7 @@ An unofficial, native macOS (Apple Silicon ARM64) port of the original Xbox vers
    - [Step 5: Compile the Game](#step-5-compile-the-game)
    - [Step 6: Configure Options](#step-6-configure-options)
    - [Step 7: Launch and Play](#step-7-launch-and-play)
+   - [Step 8: Install the App](#step-8-install-the-app)
 5. [Controls & Keyboard Layout](#controls--keyboard-layout)
 6. [Troubleshooting & FAQ](#troubleshooting--faq)
 7. [Credits & Acknowledgements](#credits--acknowledgements)
@@ -94,7 +95,7 @@ During the macOS Apple Silicon porting process, several architecture-specific hu
 - [x] **Fix Level Transition & Save Screen Hang:** Resolved "SAVING GAME..." checkpoint freeze when transitioning to Iceland Part 2.
 - [x] **Shadow Acne & Artifact Elimination:** Fixed self-shadowing acne and blocky PCF artifacts on Apple Silicon.
 - [ ] **Multiplayer Testing:** Verify online/LAN Co-op and Versus multiplayer on macOS.
-- [ ] **macOS Application Bundle:** Create a standalone `.app` bundle with drag-and-drop installation.
+- [x] **macOS Application Bundle:** Self-contained `.app` bundle with drag-and-drop installation.
 
 ---
 
@@ -111,7 +112,7 @@ Open the **Terminal** app on your Mac (press <kbd>Cmd</kbd> + <kbd>Space</kbd>, 
    ```
 2. Install the necessary development tools and libraries:
    ```bash
-   brew install git cmake ninja sdl3 glslang molten-vk vulkan-headers
+   brew install git cmake ninja sdl3 glslang molten-vk vulkan-headers vulkan-loader
    ```
 
 ---
@@ -153,6 +154,7 @@ The static recompiler requires the game executables and data files to generate C
    cmake -B build-tools -GNinja -DCMAKE_BUILD_TYPE=Release
    ninja -C build-tools extract_xbe xbe_recomp
    ```
+   > **Note:** the first `cmake` run warns that `assets/default.xbe` and `assets/sc4_adv.xbe` are missing. That is expected — they are pulled off the ISO in the next step.
 
 2. Extract the assets from your ISO:
    ```bash
@@ -161,10 +163,10 @@ The static recompiler requires the game executables and data files to generate C
    > **Placeholder:** Replace `<YOUR_ISO_FILENAME>.iso` with the exact filename of your ISO in the `assets/` folder.
 
    After this completes, the `assets` directory will contain:
-   - `default.xbe` (Single-player executable)
-   - `sc4_adv.xbe` (Versus/Multiplayer executable)
-   - `Default/` folder
-   - `adv/` folder
+   - `default.xbe` (Single-player executable, used by the recompiler)
+   - `sc4_adv.xbe` (Versus/Multiplayer executable, used by the recompiler)
+
+   The game's data files (`Default/`, `adv/`, movies, audio) are read straight from the `.iso` at runtime, so they are not unpacked here.
 
 ---
 
@@ -180,14 +182,15 @@ ninja -C build-macos SCDA SCDA_Versus
 > [!TIP]
 > The first compilation translates the entire Xbox game into native code and compiles tens of thousands of functions. This may take 5 to 15 minutes depending on your Apple Silicon chip.
 
-When the build finishes, you will find two native executables inside `build-macos/`:
-- `SCDA` (Single-Player campaign)
-- `SCDA_Versus` (Multiplayer)
+When the build finishes, `build-macos/` will contain:
+- `Splinter Cell Double Agent.app` — the single-player campaign as a self-contained macOS application
+- `SCDA_Versus` — the multiplayer executable, which the app bundle also carries inside it
 
 ---
 
 ### Step 6: Configure Options
-Settings are stored in `scda.toml` located in your build folder. You can edit this file to customize your experience:
+Settings are stored in `scda.toml`: in the build folder when running the build output, and in
+`~/Library/Application Support/SCDA` when running the app bundle. You can edit this file to customize your experience:
 
 ```toml
 # Display & Performance
@@ -204,17 +207,30 @@ skip_intros = false           # Set to true to bypass intro logos
 ---
 
 ### Step 7: Launch and Play
-From the `build-macos` directory, launch the game executable:
+Open the app bundle, from the `build-macos` directory:
 
 ```bash
-cd "<PATH_TO_SCDA_XBERECOMP>/build-macos"
-./SCDA
+open "<PATH_TO_SCDA_XBERECOMP>/build-macos/Splinter Cell Double Agent.app"
 ```
+or just double-click it in Finder. You can also use `./run_game.sh` from the repository root.
 
-To run multiplayer:
-```bash
-./SCDA_Versus
-```
+To run multiplayer, double-click `Play Versus (Multiplayer).command` (it sits beside the app and inside the
+bundle's `Contents/Resources`). It starts the Versus build that ships in the same bundle.
+
+---
+
+### Step 8: Install the App
+Drag `Splinter Cell Double Agent.app` into `/Applications` (copy `Play Versus (Multiplayer).command` along with it if
+you want a one-click multiplayer launcher in your Applications folder). The bundle is self-contained:
+
+- **Game data:** the disc image ships inside `Contents/Resources/assets`, so no external `assets` folder is needed
+  once it is built. The bundle is roughly the size of your ISO (about 4 GB).
+- **Libraries:** MoltenVK, the Vulkan loader, glslang and SPIRV-Tools are copied into `Contents/Frameworks` and
+  their paths rewritten, so the app runs even on a Mac that never installed Homebrew's Vulkan packages.
+- **Saves, settings and caches:** written to `~/Library/Application Support/SCDA` (`hdd/`, `scda.toml`, `logs/`,
+  `shadercache/`), never into the bundle — so the app can be moved or replaced without losing progress.
+- **Signing:** the bundle is ad-hoc signed for local use. It is not notarized, so if you copy it to another Mac,
+  right-click the app and choose **Open** the first time.
 
 ---
 
@@ -265,7 +281,8 @@ No. This recompiler specifically translates original Microsoft Xbox x86 machine 
 Press <kbd>F10</kbd> on your keyboard while the game is running to toggle the settings menu.
 
 #### Q: Where are save games stored?
-Save games are stored in standard Xbox format inside `build-macos/hdd/UDATA/5553005e/`.
+Save games are stored in standard Xbox format inside `hdd/UDATA/5553005e/`. That folder is `build-macos/hdd/`
+when running the build output directly, and `~/Library/Application Support/SCDA/hdd/` when running the `.app` bundle.
 
 ---
 

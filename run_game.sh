@@ -4,21 +4,21 @@ set -e
 # Tom Clancy's Splinter Cell: Double Agent (Xbox Static Recompilation for Apple Silicon macOS)
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILD_DIR="${SCRIPT_DIR}/build-macos"
+APP="${BUILD_DIR}/Splinter Cell Double Agent.app"
 
 MODE="${1:-sp}"
 
 if [[ "$MODE" == "versus" || "$MODE" == "mp" || "$MODE" == "multiplayer" ]]; then
-    EXE="${BUILD_DIR}/SCDA_Versus"
+    EXE="${APP}/Contents/MacOS/SCDA_Versus"
     echo "=== Launching Splinter Cell: Double Agent - Versus Multiplayer (arm64 Metal/Vulkan) ==="
 else
-    EXE="${BUILD_DIR}/SCDA"
+    EXE="${APP}/Contents/MacOS/Splinter Cell Double Agent"
     echo "=== Launching Splinter Cell: Double Agent - Single Player / Co-op (arm64 Metal/Vulkan) ==="
 fi
 
 if [[ ! -f "$EXE" ]]; then
-    echo "Executable $EXE not found! Building..."
-    ninja -C "$BUILD_DIR"
+    echo "Game not built yet, building the app bundle..."
+    ninja -C "$BUILD_DIR" SCDA
 fi
 
-cd "$BUILD_DIR"
 exec "$EXE"

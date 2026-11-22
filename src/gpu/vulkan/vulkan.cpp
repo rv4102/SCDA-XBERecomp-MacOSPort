@@ -1223,7 +1223,7 @@ bool VulkanBackend::CreateDevice() {
          bc_ ? "yes" : "no (decoded)", depth_fmt_ == VK_FORMAT_D24_UNORM_S8_UINT ? "D24S8" : "D32S8",
          depth_linear_ ? " filtered" : " unfiltered", custom_border_ ? "exact" : "nearest");
     // Minimal local snapshot for a user-reviewed report; never collect logs or device identifiers.
-    const auto report = app::ExeDir() / "last-vulkan-report.txt";
+    const auto report = app::DataDir() / "last-vulkan-report.txt";
     const auto temporary = report.string() + ".tmp";
     {
         std::ofstream f(temporary);
@@ -1432,10 +1432,10 @@ bool VulkanBackend::CreateFrames() {
 }
 
 std::filesystem::path PipelineCacheFile() {
-    return app::ExeDir() / "shadercache" / "vulkan_pipelines.bin";
+    return app::DataDir() / "shadercache" / "vulkan_pipelines.bin";
 }
 std::filesystem::path SpirvDir() {
-    return app::ExeDir() / "shadercache" / "vulkan";
+    return app::DataDir() / "shadercache" / "vulkan";
 }
 
 void VulkanBackend::LoadPipelineCache() {

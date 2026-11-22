@@ -32,10 +32,12 @@ namespace fs = std::filesystem;
 
 constexpr wchar_t kTitle[] = L"Splinter Cell Double Agent";
 
-// assets beside the exe or in any folder above it (the build output)
+// assets beside the exe or in any folder above it (the build output); in an app bundle, the shipped Resources
 fs::path FindAssets() {
     auto dir = ExeDir();
     std::error_code ec;
+    const fs::path bundled = dir.parent_path() / "Resources" / "assets";
+    if (fs::is_directory(bundled, ec)) return bundled;
     for (int i = 0; i < 6; i++) {
         if (fs::is_directory(dir / "assets", ec)) return dir / "assets";
         if (!dir.has_parent_path() || dir.parent_path() == dir) break;

@@ -99,6 +99,8 @@ inline float Narrow() { return 4.0f / 3.0f / Aspect(); }
 inline bool Widescreen() { return Aspect() > 1.34f; }
 
 std::filesystem::path ExeDir();
+// where the game writes: beside the executable, or ~/Library/Application Support/SCDA inside a macOS app bundle
+std::filesystem::path DataDir();
 // the game in assets (game_files.cpp): its folder and this executable's xbe, from the extracted files or a disc
 // image, which it mounts as D:; false after telling the player what is missing
 struct GameFiles {

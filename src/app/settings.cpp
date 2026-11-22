@@ -48,7 +48,7 @@ Port ParsePort(const std::string& name, Port fallback) {
     return p.keyboard || p.pad >= 0 || name == "none" ? p : fallback;
 }
 
-std::filesystem::path File() { return ExeDir() / "scda.toml"; }
+std::filesystem::path File() { return DataDir() / "scda.toml"; }
 
 }  // namespace
 

@@ -44,6 +44,10 @@ target_include_directories(xbe_recomp PRIVATE src tools/recomp)
 target_compile_definitions(xbe_recomp PRIVATE _CRT_SECURE_NO_WARNINGS)
 target_link_libraries(xbe_recomp PRIVATE Zydis tomlplusplus::tomlplusplus)
 
+# pulls default.xbe and sc4_adv.xbe off a disc image, before anything can be recompiled
+add_executable(extract_xbe tools/extract_xbe.cpp src/kernel/disc.cpp)
+target_include_directories(extract_xbe PRIVATE src)
+
 if(APPLE)
     set(IMGUI_SOURCES
         ${imgui_SOURCE_DIR}/imgui.cpp
@@ -107,7 +111,7 @@ endif()
 
 # One executable per recompiled image: the image's code from its config (partitions as that config sets them),
 # the shared host, and the game hooks only that image has.
-function(scda_image target xbe config partitions game_dir)
+function(scda_image target xbe config partitions game_dir as_bundle)
     set(GEN ${CMAKE_CURRENT_SOURCE_DIR}/generated/${game_dir})
     set(GEN_SOURCES ${GEN}/x86_func_mapping.cpp)
     math(EXPR last "${partitions} - 1")
@@ -130,13 +134,27 @@ function(scda_image target xbe config partitions game_dir)
     # the xbe's SHA-1: the executable checks the game it finds is the release it was made from
     set(xbe_file ${CMAKE_CURRENT_SOURCE_DIR}/assets/${xbe})
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${xbe_file})
-    file(SHA1 ${xbe_file} xbe_sha1)
+    # the xbe only exists after extract_xbe has run on the disc image, so configuring first is not an error
+    if(EXISTS ${xbe_file})
+        file(SHA1 ${xbe_file} xbe_sha1)
+    else()
+        set(xbe_sha1 "")
+        message(WARNING "assets/${xbe} is missing: run build-tools/extract_xbe on the disc image, then re-run CMake")
+    endif()
     set(XBE_HASH ${CMAKE_CURRENT_BINARY_DIR}/${target}_xbe.cpp)
     file(CONFIGURE OUTPUT ${XBE_HASH} CONTENT "extern const char kImageSha1[] = \"${xbe_sha1}\";\n")
     if(WIN32)
         add_executable(${target} WIN32 ${HOST_SOURCES} ${GAME_SOURCES} ${GEN_SOURCES} ${IMGUI_SOURCES} ${XBE_HASH} ${EXTRA_EXE_SOURCES})
+    elseif(APPLE AND as_bundle)
+        add_executable(${target} MACOSX_BUNDLE ${HOST_SOURCES} ${GAME_SOURCES} ${GEN_SOURCES} ${IMGUI_SOURCES} ${XBE_HASH})
     else()
         add_executable(${target} ${HOST_SOURCES} ${GAME_SOURCES} ${GEN_SOURCES} ${IMGUI_SOURCES} ${XBE_HASH})
+    endif()
+    if(APPLE AND as_bundle)
+        # the player gets one app: the story build is the bundle, tools/bundle_macos.sh packs it
+        set_target_properties(${target} PROPERTIES
+            OUTPUT_NAME "Splinter Cell Double Agent"
+            MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/tools/Info.plist")
     endif()
     add_dependencies(${target} recompile_${target} build_info)
     target_include_directories(${target} PRIVATE src ${GEN} /opt/homebrew/include)
@@ -165,9 +183,25 @@ function(scda_image target xbe config partitions game_dir)
             "-framework QuartzCore"
             "-framework Metal"
         )
-        target_link_options(${target} PRIVATE -g)
+        # install_name_tool rewrites the Homebrew paths; leave room for the longer @rpath ones
+        target_link_options(${target} PRIVATE -g -Wl,-headerpad_max_install_names)
     endif()
 endfunction()
 
-scda_image(SCDA default.xbe scda_v2.toml 128 game)        # story and co-op
-scda_image(SCDA_Versus sc4_adv.xbe sc4_adv.toml 64 versus)  # versus
+scda_image(SCDA default.xbe scda_v2.toml 128 game TRUE)        # story and co-op, the app bundle
+scda_image(SCDA_Versus sc4_adv.xbe sc4_adv.toml 64 versus FALSE)  # versus, launched from inside the bundle
+
+if(APPLE)
+    # package the story build as a self-contained app: game image, versus build and its libraries inside
+    add_dependencies(SCDA SCDA_Versus)
+    add_custom_command(TARGET SCDA POST_BUILD
+        COMMAND /bin/bash "${CMAKE_CURRENT_SOURCE_DIR}/tools/bundle_macos.sh"
+                "$<TARGET_BUNDLE_DIR:SCDA>"
+                "$<TARGET_FILE:SCDA>"
+                "$<TARGET_FILE:SCDA_Versus>"
+                "${CMAKE_CURRENT_SOURCE_DIR}/assets"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/AppIcon.icns"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/Info.plist"
+        COMMENT "Packaging Splinter Cell Double Agent.app"
+        VERBATIM)
+endif()

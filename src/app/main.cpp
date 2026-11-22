@@ -66,7 +66,7 @@ LONG WINAPI WriteCrashDump(EXCEPTION_POINTERS* e) {
         }
         kernel::LogGuestStack(*t->ctx, 256);
     }
-    auto dir = ExeDir() / "CrashDumps";
+    auto dir = DataDir() / "CrashDumps";
     CreateDirectoryW(dir.c_str(), nullptr);
     SYSTEMTIME t;
     GetLocalTime(&t);
@@ -241,6 +241,23 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
 }  // namespace
 
+std::filesystem::path DataDir() {
+#if defined(__APPLE__)
+    // an installed app bundle is not ours to write into: saves, settings and caches go to Application Support
+    auto dir = ExeDir();
+    if (dir.filename() == "MacOS" && dir.parent_path().filename() == "Contents" &&
+        dir.parent_path().parent_path().extension() == ".app") {
+        if (const char* home = std::getenv("HOME")) {
+            std::filesystem::path support = std::filesystem::path(home) / "Library" / "Application Support" / "SCDA";
+            std::error_code ec;
+            std::filesystem::create_directories(support, ec);
+            return support;
+        }
+    }
+#endif
+    return ExeDir();
+}
+
 std::filesystem::path ExeDir() {
 #ifdef _WIN32
     wchar_t p[MAX_PATH];
@@ -330,7 +347,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
     // one log a session: a relaunch (front end to mission, story to versus) carries on its predecessor's
     bool relaunched = std::wcsstr(GetCommandLineW(), L"--relaunched") != nullptr;
     std::string log = app::Instance() > 1 ? "scda-" + std::to_string(app::Instance()) : "scda";
-    logx::Init((app::ExeDir() / "logs").string(), log, relaunched);
+    logx::Init((app::DataDir() / "logs").string(), log, relaunched);
     app::Load();
     if (relaunched && !logx::kVerbose) {
         wchar_t exe[MAX_PATH] = {};
@@ -374,7 +391,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
     input::LoadBindings();
     std::wstring hdd = app::Instance() > 1 ? L"hdd" + std::to_wstring(app::Instance()) : L"hdd";
     if (app::Instance()) SetWindowTextW(app::g_hwnd, (L"Tom Clancy's Splinter Cell: Double Agent [" + std::to_wstring(app::Instance()) + L"]").c_str());
-    if (!kernel::Boot(std::move(game.xbe), IMAGE_XBE, game.dir.string(), (app::ExeDir() / hdd).string())) {
+    if (!kernel::Boot(std::move(game.xbe), IMAGE_XBE, game.dir.string(), (app::DataDir() / hdd).string())) {
         MessageBoxW(app::g_hwnd, L"The game failed to start, see the log in the logs folder.", L"Splinter Cell Double Agent",
                     MB_ICONERROR);
         return 1;
@@ -486,11 +503,26 @@ void Pace() {
 
 }  // namespace app
 
+#if defined(__APPLE__)
+namespace {
+// the Vulkan loader would otherwise read Homebrew's ICD manifest and load MoltenVK from /opt/homebrew; point it at
+// the manifest shipped beside the bundled libMoltenVK.dylib instead, unless the environment already names a driver
+void UseBundledVulkanDriver() {
+    std::error_code ec;
+    auto icd = app::ExeDir().parent_path() / "Resources" / "vulkan" / "icd.d" / "MoltenVK_icd.json";
+    if (!std::filesystem::exists(icd, ec)) return;
+    if (!std::getenv("VK_DRIVER_FILES")) setenv("VK_DRIVER_FILES", icd.string().c_str(), 1);
+    if (!std::getenv("VK_ICD_FILENAMES")) setenv("VK_ICD_FILENAMES", icd.string().c_str(), 1);
+}
+}  // namespace
+#endif
+
 int main(int argc, char** argv) {
 #ifdef __APPLE__
     // MoltenVK's default fast math breaks the bit exact positions the EQUAL depth passes need (blocky squares and
     // hatching on lit surfaces). Set before the Vulkan instance exists; a value already in the environment wins.
     setenv("MVK_CONFIG_FAST_MATH_ENABLED", "0", 0);
+    UseBundledVulkanDriver();
 #endif
 #if !defined(_WIN32)
     struct rlimit rl;
@@ -514,7 +546,7 @@ int main(int argc, char** argv) {
         if (std::strcmp(argv[i], "--relaunched") == 0) relaunched = true;
     }
     std::string log = app::Instance() > 1 ? "scda-" + std::to_string(app::Instance()) : "scda";
-    logx::Init((app::ExeDir() / "logs").string(), log, relaunched);
+    logx::Init((app::DataDir() / "logs").string(), log, relaunched);
     app::Load();
     app::LogSystem();
 
@@ -559,7 +591,7 @@ int main(int argc, char** argv) {
     input::LoadBindings();
 
     std::string hdd = app::Instance() > 1 ? "hdd" + std::to_string(app::Instance()) : "hdd";
-    if (!kernel::Boot(std::move(game.xbe), IMAGE_XBE, game.dir.string(), (app::ExeDir() / hdd).string())) {
+    if (!kernel::Boot(std::move(game.xbe), IMAGE_XBE, game.dir.string(), (app::DataDir() / hdd).string())) {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Splinter Cell Double Agent",
                                  "The game failed to start, see the log in the logs folder.",
                                  static_cast<SDL_Window*>(app::g_window));
